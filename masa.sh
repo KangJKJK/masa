@@ -155,6 +155,10 @@ EOL
         # 프로젝트 디렉토리로 이동
         cd masa-oracle
         
+        # Go 환경변수 설정
+        export PATH="/usr/local/opt/go@1.22/bin:$PATH"
+        source ~/.bash_profile
+        
         # .env 파일 수정
         echo -e "${CYAN}.env 파일 수정 중...${NC}"
         sed -i 's/VALIDATOR=false/VALIDATOR=true/' .env
@@ -165,6 +169,10 @@ EOL
         # .env 파일 업데이트
         sed -i "s/^PUBLIC_KEY=.*/PUBLIC_KEY=$PUBLIC_KEY/" .env
         sed -i "s/^MULTIADDR=.*/MULTIADDR=$MULTIADDR/" .env
+
+        # 빌드 실행
+        echo -e "${CYAN}노드 빌드 중...${NC}"
+        make build
 
         # Faucet 및 Stake 실행
         echo -e "${CYAN}Faucet 요청 중...${NC}"
