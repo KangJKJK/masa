@@ -140,7 +140,7 @@ EOL
 print_success ".env 파일 생성 완료"
 
 # 노드실행
-brew install go@1.22
+sudo apt-get install -y golang-1.22
 export PATH="/usr/local/opt/go@1.22/bin:$PATH"
 source ~/.bash_profile
 go version
