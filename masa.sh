@@ -97,6 +97,7 @@ done
 echo -e "${GREEN}사용 가능한 포트 찾음: $PORT${NC}"
 sudo ufw enable
 sudo ufw allow $PORT/tcp
+sudo ufw allow 22/tcp
 print_success "포트 $PORT가 방화벽에서 허용되었습니다"
 
 # Twitter 계정 정보 안내 및 입력 받기
