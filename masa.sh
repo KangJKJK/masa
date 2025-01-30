@@ -30,7 +30,6 @@ else
     echo -e "${BLUE}UFW가 이미 설치되어 있습니다.${NC}"
 fi
 
-# 현재 사용자를 docker 그룹에 추가
 print_success "필수 패키지 설치 완료"
 
 # 명령어 존재 여부 확인 함수
@@ -139,7 +138,7 @@ TWITTER_ACCOUNTS=${TWITTER_ACCOUNTS}
 EOL
 print_success ".env 파일 생성 완료"
 
-# Docker 이미지 빌드 및 실행
+# 노드실행
 brew install go@1.22
 export PATH="/usr/local/opt/go@1.22/bin:$PATH"
 source ~/.bash_profile
