@@ -30,20 +30,7 @@ else
     echo -e "${BLUE}UFW가 이미 설치되어 있습니다.${NC}"
 fi
 
-# Docker 및 Docker Compose 설치 확인
-if ! command -v docker &> /dev/null || ! command -v docker-compose &> /dev/null; then
-    echo -e "${RED}Docker 또는 Docker Compose가 설치되어 있지 않습니다. 설치를 진행합니다...${NC}"
-    sudo apt update && sudo apt install -y docker.io docker-compose
-else
-    echo -e "${GREEN}Docker 및 Docker Compose가 이미 설치되어 있습니다.${NC}"
-fi
-
-# Docker 서비스 시작
-sudo systemctl start docker
-sudo systemctl enable docker
-
 # 현재 사용자를 docker 그룹에 추가
-sudo usermod -aG docker $USER
 print_success "필수 패키지 설치 완료"
 
 # 명령어 존재 여부 확인 함수
