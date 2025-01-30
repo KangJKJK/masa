@@ -61,13 +61,45 @@ if ! grep -q "Ubuntu" /etc/os-release; then
     exit 1
 fi
 
+# 시스템 요구사항 확인
+echo -e "${MAGENTA}시스템 요구사항 확인 중...${NC}"
+CPU_CORES=$(nproc)
+TOTAL_RAM=$(free -g | awk '/^Mem:/{print $2}')
+STORAGE=$(df -BG / | awk 'NR==2 {print $4}' | sed 's/G//')
+
+if [ $CPU_CORES -lt 2 ] || [ $TOTAL_RAM -lt 4 ] || [ $STORAGE -lt 120 ]; then
+    echo -e "${RED}시스템이 최소 요구사항을 충족하지 않습니다:${NC}"
+    echo -e "필요: CPU 2코어 이상, RAM 4GB 이상, 저장공간 120GB 이상"
+    echo -e "현재: CPU ${CPU_CORES}코어, RAM ${TOTAL_RAM}GB, 저장공간 ${STORAGE}GB"
+    exit 1
+fi
+
 # 프로젝트 디렉토리 생성 및 이동
 PROJECT_DIR="masa-oracle"
 
-# 저장소 복제
+# 저장소 복제 및 최신 릴리즈 체크아웃
 echo -e "${CYAN}Masa Oracle 저장소 복제 중...${NC}"
 git clone https://github.com/masa-finance/masa-oracle.git
 cd $PROJECT_DIR
+
+echo -e "${CYAN}최신 릴리즈 태그 체크아웃 중...${NC}"
+latest_tag=$(git describe --tags `git rev-list --tags --max-count=1`)
+git checkout $latest_tag
+print_success "최신 버전 ($latest_tag) 체크아웃 완료"
+
+# contracts 의존성 설치
+echo -e "${CYAN}contracts 의존성 설치 중...${NC}"
+cd contracts
+if command -v npm &> /dev/null; then
+    npm install
+elif command -v yarn &> /dev/null; then
+    yarn install
+else
+    echo -e "${RED}npm 또는 yarn이 설치되어 있지 않습니다. Node.js를 설치해주세요.${NC}"
+    exit 1
+fi
+cd ..
+print_success "contracts 의존성 설치 완료"
 
 # .env 파일 생성 전에 사용 가능한 포트 찾기
 echo -e "${YELLOW}사용 가능한 포트 확인 중...${NC}"
@@ -77,94 +109,90 @@ while nc -z localhost $PORT 2>/dev/null; do
     PORT=$((PORT + 1))
 done
 echo -e "${GREEN}사용 가능한 포트 찾음: $PORT${NC}"
+sudo ufw enable
+sudo ufw allow $PORT/tcp
+print_success "포트 $PORT가 방화벽에서 허용되었습니다"
 
-# .env 파일 생성 전 중요 고지사항 표시
-echo -e "\n${MAGENTA}=== 중요 안내사항 ===${NC}"
-echo -e "${YELLOW}Masa 노드 참여를 위한 필수 요구사항:${NC}"
-echo -e "1. 모든 노드는 스테이킹이 필요합니다 (최소 1000 Sepolia MASA)"
-echo -e "2. Sepolia ETH가 필요합니다 (퍼블릭 faucet에서 획득 가능)"
-echo -e "3. Sepolia MASA 토큰이 필요합니다 ('make faucet' 명령어로 1000 MASA 획득 가능)\n"
-
-echo -e "${YELLOW}워커(데이터 제공자)로 참여하기 위한 추가 요구사항:${NC}"
-echo -e "1. Twitter 워커: 유료 Twitter 계정 필요"
-echo -e "2. Discord 워커: Discord 봇 토큰 필요"
-echo -e "3. Telegram 워커: Telegram API 자격 증명 및 봇 설정 필요\n"
-echo -e "${YELLOW}가이드라인에 따르면 트위터워커가 중요하므로 트위터워커로 구동합니다.${NC}"
-
-echo -e "${CYAN}계속 진행하시겠습니까? (y/n)${NC}"
-read -p "" confirm
 if [[ $confirm != [yY] ]]; then
     echo -e "${RED}설치가 취소되었습니다.${NC}"
     exit 1
 fi
 
+# Twitter 계정 정보 안내 및 입력 받기
+echo -e "${YELLOW}Twitter 계정 정보 입력이 필요합니다${NC}"
+echo -e "${YELLOW}주의사항:${NC}"
+echo -e "1. Twitter 프리미엄 계정이 필요합니다"
+echo -e "2. 여러 계정을 사용할 수 있으며, 계정 입력 시 쉼표(,)로 구분해 주세요"
+echo -e "예시: username1,username2,username3"
+echo -e "예시: password1,password2,password3"
+echo
+
+read -p "Twitter 사용자명 (쉼표로 구분): " TWITTER_USERNAMES
+read -sp "Twitter 비밀번호 (쉼표로 구분): " TWITTER_PASSWORDS
+echo # 새 줄 추가
+
+# 쉼표로 구분된 사용자명과 비밀번호를 결합하여 TWITTER_ACCOUNTS 형식으로 변환
+IFS=',' read -ra USERNAMES <<< "$TWITTER_USERNAMES"
+IFS=',' read -ra PASSWORDS <<< "$TWITTER_PASSWORDS"
+TWITTER_ACCOUNTS=""
+for i in "${!USERNAMES[@]}"; do
+    if [ $i -gt 0 ]; then
+        TWITTER_ACCOUNTS+=","
+    fi
+    TWITTER_ACCOUNTS+="${USERNAMES[$i]}:${PASSWORDS[$i]}"
+done
+
 # .env 파일 생성
 echo -e "${CYAN}.env 파일 생성 중...${NC}"
 cat > .env << EOL
-# 기본 노드 설정
-BOOTNODES=/ip4/35.223.224.220/udp/4001/quic-v1/p2p/16Uiu2HAmPxXXjR1XJEwckh6q1UStheMmGaGe8fyXdeRs3SejadSa
+# Base .env configuration
 RPC_URL=https://ethereum-sepolia.publicnode.com
-ENV=test
+ENV=local
 FILE_PATH=.
+VALIDATOR=false
 PORT=$PORT
-
-# Worker 설정
+API_ENABLED=true  # Set to true to allow API calls, false to disable them
 TWITTER_SCRAPER=true
-DISCORD_SCRAPER=false
-WEB_SCRAPER=false
-TELEGRAM_SCRAPER=false
-
-# Twitter 설정
-TWITTER_ACCOUNTS=
-TWITTER_PASSWORD=
-USER_AGENTS="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36,Mozilla/5.0 (Macintosh; Intel Mac OS X 14.7; rv:131.0) Gecko/20100101 Firefox/131.0"
-
-# Discord 설정
-DISCORD_BOT_TOKEN=
-
-# Telegram 설정
-TELEGRAM_APP_ID=
-TELEGRAM_APP_HASH=
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_CHANNEL_USERNAME=
+TWITTER_ACCOUNTS=${TWITTER_ACCOUNTS}
 EOL
 print_success ".env 파일 생성 완료"
 
-# Docker 이미지 빌드
-echo -e "${YELLOW}Docker 이미지 빌드 중...${NC}"
-docker-compose build
+# Docker 이미지 빌드 및 실행
+brew install go@1.22
+export PATH="/usr/local/opt/go@1.22/bin:$PATH"
+source ~/.bash_profile
+go version
+make build
+make run
 
-# UFW 설정
-echo -e "${BLUE}방화벽 설정 중...${NC}"
-if command -v ufw &> /dev/null; then
-    sudo ufw allow $PORT/tcp
-    print_success "포트 $PORT가 방화벽에서 허용되었습니다"
-else
-    echo -e "${RED}UFW가 설치되어 있지 않습니다. 필요한 경우 수동으로 포트를 열어주세요${NC}"
-fi
+echo -e "${YELLOW}멀티어드레스와 퍼블릭키가 위에 표시되었습니다.${NC}"
+echo -e "${YELLOW}멀티어드레스는 'Multiaddress:' 다음에 나오는 긴 문자열 중 마지막 부분입니다.${NC}"
+echo -e "${YELLOW}예: /ip4/192.168.1.8/udp/4001/quic-v1/p2p/16Uiu2HAm... 에서${NC}"
+echo -e "${YELLOW}16Uiu2HAm... 부분이 실제 멀티어드레스입니다.${NC}"
 
-# 노드 시작
-echo -e "${MAGENTA}Masa 노드 시작 중...${NC}"
-docker-compose up -d
+read -p "멀티어드레스를 입력하세요: " MULTIADDR
+read -p "퍼블릭키를 입력하세요: " PUBLIC_KEY
 
-# 노드 시작 대기 및 공개키 확인
-echo -e "${CYAN}노드 시작 대기 중...${NC}"
-sleep 10
-NODE_LOGS=$(docker-compose logs masa-node)
-PUBLIC_KEY=$(echo "$NODE_LOGS" | grep "Public Key:" | awk '{print $3}')
+# .env 파일 업데이트
+sed -i "s/^PUBLIC_KEY=.*/PUBLIC_KEY=$PUBLIC_KEY/" .env
+sed -i "s/^MULTIADDR=.*/MULTIADDR=$MULTIADDR/" .env
+
+# Faucet 및 Stake 실행
+echo -e "${CYAN}Faucet 요청 중...${NC}"
+make faucet
+echo -e "${CYAN}Stake 진행 중...${NC}"
+make stake
+
+# Bootnode 정보 추가
+echo -e "${CYAN}Bootnode 정보 추가 중...${NC}"
+echo 'BOOTNODES="/dns4/boot-1.test.miners.masa.ai/udp/4001/quic-v1/p2p/16Uiu2HAm9Nkz9kEMnL1YqPTtXZHQZ1E9rhquwSqKNsUViqTojLZt,/dns4/boot-2.test.miners.masa.ai/udp/4001/quic-v1/p2p/16Uiu2HAm7KfNcv3QBPRjANctYjcDnUvcog26QeJnhDN9nazHz9Wi,/dns4/boot-3.test.miners.masa.ai/udp/4001/quic-v1/p2p/16Uiu2HAmBcNRvvXMxyj45fCMAmTKD4bkXu92Wtv4hpzRiTQNLTsL"' >> .env
+
+# 노드 재시작
+echo -e "${CYAN}노드를 재시작합니다...${NC}"
+make run
 
 print_success "노드가 성공적으로 시작되었습니다!"
-echo -e "${GREEN}공개키: $PUBLIC_KEY${NC}"
-echo -e "${GREEN}이제 각 단계들을 숙지하세요.${NC}"
-echo -e "${YELLOW}노드의 공개키 주소로 Sepolia ETH 전송: $PUBLIC_KEY${NC}"
-read -p "공개키 주소로 eth를 보내셨나요? (y/n)" :
-docker-compose run --rm masa-node /usr/bin/masa-node --faucet
-docker-compose run --rm masa-node /usr/bin/masa-node --stake 1000
-docker-compose up -d
-NODE_LOGS=$(docker-compose logs --tail 20 masa-node)  # 최신 20줄의 로그만 가져오기
 
 echo -e "${GREEN}masa 노드 설치 및 설정이 완료되었습니다.${NC}"
-echo -e "${YELLOW}로그는 다음명령어로 확인하세요: docker-compose logs -f masa-node${NC}"
-echo -e "${YELLOW}이곳에서 리더보드를 확인하세요: https://deepnote.com/app/masa-analytics/Masa-Testnet-Leaderboard-4a301f2d-43f0-4b35-bb30-f992efc957e6${NC}"
-echo -e "${GREEN}이곳에서 리더보드를 확인하세요: https://deepnote.com/app/masa-analytics/Masa-Testnet-Leaderboard-4a301f2d-43f0-4b35-bb30-f992efc957e6${NC}"
+echo -e "${YELLOW}이곳에서 리더보드를 확인하세요: https://deepnote.com/app/masa-analytics/Masa-Testnet-Extension-Leaderboard-033bcce9-1200-4fc1-b9af-83106d30bde1?utm_source=share-modal&utm_medium=product-shared-content&utm_campaign=data-app&utm_content=033bcce9-1200-4fc1-b9af-83106d30bde1${NC}"
 echo -e "${GREEN}스크립트작성자: https://t.me/kjkresearch${NC}"
