@@ -100,11 +100,6 @@ sudo ufw enable
 sudo ufw allow $PORT/tcp
 print_success "포트 $PORT가 방화벽에서 허용되었습니다"
 
-if [[ $confirm != [yY] ]]; then
-    echo -e "${RED}설치가 취소되었습니다.${NC}"
-    exit 1
-fi
-
 # Twitter 계정 정보 안내 및 입력 받기
 echo -e "${YELLOW}Twitter 계정 정보 입력이 필요합니다${NC}"
 echo -e "${YELLOW}주의사항:${NC}"
